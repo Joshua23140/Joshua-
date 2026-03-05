@@ -1,10 +1,11 @@
 from flask import Flask, render_template, request, jsonify, session, redirect
-import sqlite3
+import psycopg2
+import os
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 
 app = Flask(__name__)
-import os
+
 app.secret_key = os.environ.get("SECRET_KEY")
 
 
@@ -15,7 +16,7 @@ def home():
 
 # conexão segura
 def conectar():
-    return sqlite3.connect("database.db", check_same_thread=False)
+    return psycopg2.connect(os.environ.get("DATABASE_URL"))
 
 
 # criar tabelas
@@ -25,7 +26,7 @@ def criar_tabela():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL
     )
@@ -33,7 +34,7 @@ def criar_tabela():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS conhecimento (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         pergunta TEXT UNIQUE,
         resposta TEXT
     )
@@ -69,7 +70,7 @@ def register():
     try:
 
         cursor.execute(
-            "INSERT INTO usuarios (username, password) VALUES (?, ?)",
+            "INSERT INTO usuarios (username, password) VALUES (%s, %s)",
             (username, senha_hash)
         )
 
@@ -100,7 +101,7 @@ def login():
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT password FROM usuarios WHERE username=?",
+        "SELECT password FROM usuarios WHERE username=(%s, %s)",
         (username,)
     )
 
