@@ -4,7 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 
 app = Flask(__name__)
-app.secret_key = "segredo_super_seguro"
+import os
+app.secret_key = os.environ.get("SECRET_KEY")
 
 
 @app.route("/")
