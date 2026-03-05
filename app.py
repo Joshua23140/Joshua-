@@ -3,6 +3,8 @@ import psycopg2
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
 app = Flask(__name__)
 
@@ -189,23 +191,35 @@ def aprender(pergunta, resposta):
 
 # buscar resposta
 def buscar_resposta(pergunta):
-
-    pergunta = pergunta.strip().lower()
-
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT resposta FROM conhecimento WHERE pergunta=?",
-        (pergunta,)
-    )
+    cursor.execute("SELECT pergunta, resposta FROM conhecimento")
 
-    resultado = cursor.fetchone()
+    dados = cursor.fetchall()
 
     conn.close()
 
-    if resultado:
-        return resultado[0]
+    if not dados:
+        return None
+
+    vetor_pergunta = modelo.encode(pergunta)
+
+    melhor_score = 0
+    melhor_resposta = None
+
+    for p, r in dados:
+
+        vetor_bd = modelo.encode(p)
+
+        score = similaridade(vetor_pergunta, vetor_bd)
+
+        if score > melhor_score:
+            melhor_score = score
+            melhor_resposta = r
+
+    if melhor_score > 0.6:
+        return melhor_resposta
 
     return None
 
@@ -313,6 +327,10 @@ def historico():
     conn.close()
 
     return jsonify(dados)
+
+modelo = SentenceTransformer("all-MiniLM-L6-v2")
+def similaridade(v1, v2):
+    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
 
 # iniciar servidor
