@@ -43,6 +43,16 @@ def criar_tabela():
     conn.commit()
     conn.close()
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS conversas (
+        id SERIAL PRIMARY KEY,
+        usuario TEXT,
+        mensagem TEXT,
+        resposta TEXT,
+        data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
 
 criar_tabela()
 
@@ -199,12 +209,34 @@ def buscar_resposta(pergunta):
 
     return None
 
+def salvar_conversa(usuario, mensagem, resposta):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO conversas (usuario, mensagem, resposta) VALUES (%s, %s, %s)",
+        (usuario, mensagem, resposta)
+    )
+
+    conn.commit()
+    conn.close()
+
 @app.route("/chat", methods=["POST"])
 def chat():
-
+    if "user" not in session:
+        return jsonify({"resposta": "Faça login primeiro."})
+   
     data = request.json
+    mensagem = data.get("mensagem").lower()
 
-    mensagem = data.get("mensagem").lower().strip()
+    resposta = buscar_resposta(mensagem)
+
+    if not resposta:
+        resposta = "Não sei responder isso ainda."
+    salvar_conversa(session["user"], mensagem, resposta)
+    return jsonify({"resposta": resposta})
+
 
     # verificar se é comando de aprendizado
     if mensagem.startswith("aprender:"):
@@ -261,6 +293,26 @@ def ensinar():
     aprender(pergunta, resposta)
 
     return jsonify({"status": "aprendido"})
+
+@app.route("/historico")
+def historico():
+
+    if "user" not in session:
+        return redirect("/")
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT mensagem, resposta, data FROM conversas WHERE usuario=%s ORDER BY data DESC",
+        (session["user"],)
+    )
+
+    dados = cursor.fetchall()
+
+    conn.close()
+
+    return jsonify(dados)
 
 
 # iniciar servidor
