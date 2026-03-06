@@ -27,6 +27,7 @@ def conectar():
 
 # criar tabelas
 def criar_tabela():
+
     conn = conectar()
     cursor = conn.cursor()
 
@@ -46,9 +47,6 @@ def criar_tabela():
     )
     """)
 
-    conn.commit()
-    conn.close()
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS conversas (
         id SERIAL PRIMARY KEY,
@@ -58,6 +56,9 @@ def criar_tabela():
         data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
+    conn.commit()
+    conn.close()
 
 
 criar_tabela()
