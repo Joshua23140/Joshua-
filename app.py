@@ -1,14 +1,18 @@
 from flask import Flask, render_template, request, jsonify, session, redirect
+from werkzeug.security import generate_password_hash, check_password_hash
+from sentence_transformers import SentenceTransformer
+from openai import OpenAI
+import datetime
+import numpy as np
 import psycopg2
 import os
-from werkzeug.security import generate_password_hash, check_password_hash
-import datetime
-from sentence_transformers import SentenceTransformer
-import numpy as np
+import os
 
 app = Flask(__name__)
 
 app.secret_key = os.environ.get("SECRET_KEY")
+
+cliente = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
 @app.route("/")
@@ -190,23 +194,24 @@ def aprender(pergunta, resposta):
 
 
 # buscar resposta
-def buscar_resposta(pergunta):
+def buscar_contexto(pergunta):
+
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT pergunta, resposta FROM conhecimento")
+    cursor.execute(
+        "SELECT pergunta, resposta FROM conhecimento"
+    )
 
     dados = cursor.fetchall()
-
     conn.close()
 
     if not dados:
-        return None
+        return ""
 
     vetor_pergunta = modelo.encode(pergunta)
 
-    melhor_score = 0
-    melhor_resposta = None
+    melhores = []
 
     for p, r in dados:
 
@@ -214,14 +219,16 @@ def buscar_resposta(pergunta):
 
         score = similaridade(vetor_pergunta, vetor_bd)
 
-        if score > melhor_score:
-            melhor_score = score
-            melhor_resposta = r
+        melhores.append((score, p, r))
 
-    if melhor_score > 0.6:
-        return melhor_resposta
+    melhores.sort(reverse=True)
 
-    return None
+    contexto = ""
+
+    for score, p, r in melhores[:3]:
+        contexto += f"Pergunta: {p}\nResposta: {r}\n\n"
+
+    return contexto
 
 def salvar_conversa(usuario, mensagem, resposta):
 
@@ -242,51 +249,12 @@ def chat():
         return jsonify({"resposta": "Faça login primeiro."})
    
     data = request.json
-    mensagem = data.get("mensagem").lower()
-
-    resposta = buscar_resposta(mensagem)
-
+    mensagem = data.get("mensagem")
+    resposta = gerar_resposta_rag(mensagem)
     if not resposta:
-        resposta = "Não sei responder isso ainda."
+        resposta = gerar_resposta_ia(mensagem)
     salvar_conversa(session["user"], mensagem, resposta)
     return jsonify({"resposta": resposta})
-
-
-    # verificar se é comando de aprendizado
-    if mensagem.startswith("aprender:"):
-
-        try:
-
-            conteudo = mensagem.replace("aprender:", "").strip()
-
-            pergunta, resposta = conteudo.split("=", 1)
-
-            pergunta = pergunta.strip()
-            resposta = resposta.strip()
-
-            aprender(pergunta, resposta)
-
-            return jsonify({
-                "resposta": "Aprendi com sucesso!"
-            })
-
-        except:
-
-            return jsonify({
-                "resposta": "Formato correto: aprender: pergunta = resposta"
-            })
-
-    # buscar resposta no banco
-    resposta = buscar_resposta(mensagem)
-
-    if resposta:
-        return jsonify({"resposta": resposta})
-
-    # respostas padrão
-    resposta_padrao = processar_mensagem(mensagem)
-
-    return jsonify({"resposta": resposta_padrao})
-
 
 
 # ensinar
@@ -332,7 +300,41 @@ modelo = SentenceTransformer("all-MiniLM-L6-v2")
 def similaridade(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
+def gerar_resposta_ia(pergunta):
+
+    resposta = cliente.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {"role": "system", "content": "Você é um assistente útil em um site."},
+            {"role": "user", "content": pergunta}
+        ]
+    )
+
+    return resposta.choices[0].message.content
+
+def gerar_resposta_rag(pergunta):
+
+    contexto = buscar_contexto(pergunta)
+
+    prompt = f"""
+Use as informações abaixo para responder a pergunta do usuário.
+
+{contexto}
+
+Pergunta do usuário:
+{pergunta}
+"""
+
+    resposta = cliente.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {"role": "system", "content": "Você responde baseado no conhecimento fornecido."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    return resposta.choices[0].message.content
 
 # iniciar servidor
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
