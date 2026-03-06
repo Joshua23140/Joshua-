@@ -6,11 +6,10 @@ import datetime
 import numpy as np
 import psycopg2
 import os
-import os
 
 app = Flask(__name__)
 
-app.secret_key = os.environ.get("SECRET_KEY")
+app.secret_key = os.environ.get("SECRET_KEY", "chave_local_dev")
 
 cliente = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
@@ -118,7 +117,7 @@ def login():
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT password FROM usuarios WHERE username=(%s, %s)",
+        "SELECT password FROM usuarios WHERE username=%s",
         (username,)
     )
 
@@ -182,7 +181,7 @@ def aprender(pergunta, resposta):
     try:
 
         cursor.execute(
-            "INSERT INTO conhecimento (pergunta, resposta) VALUES (?, ?)",
+            "INSERT INTO conhecimento (pergunta, resposta) VALUES (%s, %s)",
             (pergunta, resposta)
         )
 
@@ -242,6 +241,7 @@ def salvar_conversa(usuario, mensagem, resposta):
     )
 
     conn.commit()
+    cursor.close()
     conn.close()
 
 @app.route("/chat", methods=["POST"])
@@ -256,6 +256,10 @@ def chat():
         resposta = gerar_resposta_ia(mensagem)
     salvar_conversa(session["user"], mensagem, resposta)
     return jsonify({"resposta": resposta})
+    mensagem = data.get("mensagem")
+
+    if not mensagem:
+       return jsonify({"resposta": "Mensagem vazia"})
 
 
 # ensinar
@@ -298,6 +302,7 @@ def historico():
     return jsonify(dados)
 
 modelo = SentenceTransformer("all-MiniLM-L6-v2")
+
 def similaridade(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
