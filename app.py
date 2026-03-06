@@ -301,7 +301,14 @@ def historico():
 
     return jsonify(dados)
 
-modelo = SentenceTransformer("all-MiniLM-L6-v2")
+modelo = None
+
+def get_model():
+    global modelo
+    if modelo is None:
+        from sentence_transformers import SentenceTransformer
+        modelo = SentenceTransformer("all-MiniLM-L6-v2")
+    return modelo
 
 def similaridade(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
